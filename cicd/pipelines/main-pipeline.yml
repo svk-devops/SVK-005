@@ -1,0 +1,104 @@
+trigger:
+  branches:
+    include:
+      - master
+    exclude:
+      - README.md
+
+variables:
+  tfResourceGroupName: 'inf-terraform-rg'
+  tfStorageAccountName: 'infterraformstatesvksa'
+  tfStorageContainerName: 'tfstate'
+  tfVersion: '0.13.0'
+
+stages:
+
+- stage: Demo
+  displayName: "Demo stage"
+
+  variables:
+     environment: demo
+
+  jobs:
+    - job: getDockerTag
+      steps:
+        - task: AzureCLI@2
+          name: DockerTag
+          inputs:
+            azureSubscription: 'svk-005-sp'
+            scriptType: 'pscore'
+            scriptLocation: 'inlineScript'
+            inlineScript: |
+              Write-Host "DockerTag"
+              
+    - deployment: D1
+      displayName: Terraform deployment
+      dependsOn: getDockerTag
+      environment: ${{ variables.environment }}
+      variables:
+        tfStateFileName: "$(projectName)-$(environment).tfstate"
+        tfvarsFile: "$(projectName)-$(environment).tfvars"
+      strategy:
+        runOnce:
+          preDeploy:
+            steps:
+              - checkout: self
+              - task: PowerShell@2
+                displayName: EnvVariables
+                inputs:
+                  targetType: 'inline'
+                  script: |
+                    dir env:
+              - task: TerraformTaskV1@0
+                displayName: Install Terraform
+                inputs:
+                  terraformVersion: $(tfVersion)
+              - powershell: terraform version
+              - task: TerraformTaskV1@0
+                displayName: Terraform init
+                inputs:
+                  provider: 'azurerm'
+                  command: 'init'
+                  workingDirectory: '$(System.DefaultWorkingDirectory)/cicd/terraform/'
+                  backendServiceArm: 'svk-005-sp'
+                  backendAzureRmResourceGroupName: $(tfResourceGroupName)
+                  backendAzureRmStorageAccountName: $(tfStorageAccountName)
+                  backendAzureRmContainerName: $(tfStorageContainerName)
+                  backendAzureRmKey: $(tfStateFileName)
+              - task: TerraformTaskV1@0
+                displayName: terraform validate
+                inputs:
+                  provider: 'azurerm'
+                  command: 'validate'
+          deploy:
+            steps:
+              - checkout: self
+              - task: TerraformTaskV1@0
+                displayName: Install Terraform
+                inputs:
+                  terraformVersion: $(tfVersion)
+              - task: AzureCLI@2
+                displayName: Terraform init, plan and apply
+                inputs:
+                  azureSubscription: 'Enterprise Dev/Test Terraform'
+                  scriptType: 'pscore'
+                  scriptLocation: 'inlineScript'
+                  addSpnToEnvironment: true
+                  workingDirectory: $(System.DefaultWorkingDirectory)/cicd/terraform/
+                  failOnStandardError: true
+                  inlineScript: |
+                    $env:ARM_CLIENT_ID=$env:servicePrincipalId
+                    $env:ARM_CLIENT_SECRET=$env:servicePrincipalKey
+                    $env:ARM_SUBSCRIPTION_ID="c80eb516-ac45-4df1-ae1f-c8c17bf10a72"
+                    $env:ARM_TENANT_ID=$env:tenantId
+                    Write-Host "Log: $($env:subscriptionId)"
+                    terraform init -backend-config=resource_group_name="$(tfResourceGroupName)" -backend-config=storage_account_name="$(tfStorageAccountName)" -backend-config=container_name="$(tfStorageContainerName)" -backend-config=key="$(tfStateFileName)"
+                    terraform plan -var=subscription_id="$($env:ARM_SUBSCRIPTION_ID)" -var=client_id="$($env:ARM_CLIENT_ID)" -var=client_secret="$($env:ARM_CLIENT_SECRET)" -var=tenant_id="$($env:ARM_TENANT_ID)" -var="prefix=pwg004" -var="environment=$(environment)" -var="acr_username=$(acrUserName)" -var="acr_password=$(acrUserPassword)" -var="webapp_dockertag=$(ZCURRENTDOCKERTAG)" -var="vnet_addrspace=$(vnetAddrSpaceDemo)" -var="sqlsrv_password=$(sqlServerPassword)" -var="migration_path=$(Build.ArtifactStagingDirectory)/DB/Service_DB.sql"
+                    terraform apply -auto-approve -var=subscription_id="$($env:ARM_SUBSCRIPTION_ID)" -var=client_id="$($env:ARM_CLIENT_ID)" -var=client_secret="$($env:ARM_CLIENT_SECRET)" -var=tenant_id="$($env:ARM_TENANT_ID)" -var="prefix=pwg004" -var="environment=$(environment)" -var="acr_username=$(acrUserName)" -var="acr_password=$(acrUserPassword)" -var="webapp_dockertag=$(ZCURRENTDOCKERTAG)" -var="vnet_addrspace=$(vnetAddrSpaceDemo)" -var="sqlsrv_password=$(sqlServerPassword)" -var="migration_path=$(Build.ArtifactStagingDirectory)/DB/Service_DB.sql"
+          on:
+            failure:
+              steps:
+                - powershell: Write-Host "Failure"
+            success:
+              steps:
+                - powershell: Write-Host "Success"
