@@ -80,7 +80,7 @@ stages:
               - task: AzureCLI@2
                 displayName: Terraform init, plan and apply
                 inputs:
-                  azureSubscription: 'Enterprise Dev/Test Terraform'
+                  azureSubscription: 'svk-005-sp'
                   scriptType: 'pscore'
                   scriptLocation: 'inlineScript'
                   addSpnToEnvironment: true

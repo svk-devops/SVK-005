@@ -31,6 +31,6 @@ variable "prefix" {
 }
 variable "environment" {
   type = string
-  default = "int"
+  default = "demo"
   description = "Deployment environment"
 }
