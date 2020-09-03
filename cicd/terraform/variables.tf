@@ -26,7 +26,7 @@ variable "tenant_id" {
 # Environment settings 
 variable "prefix" {
   type = string
-  default = "svk"
+  default = "svk-005"
   description = "The prefix used for all resources in this example"
 }
 variable "environment" {
